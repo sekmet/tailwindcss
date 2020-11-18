@@ -17,7 +17,7 @@ test('it uses the values from the custom config file', () => {
       `,
       { from: undefined }
     )
-    .then(result => {
+    .then((result) => {
       const expected = `
         .foo {
           color: blue;
@@ -52,7 +52,7 @@ test('custom config can be passed as an object', () => {
       `,
       { from: undefined }
     )
-    .then(result => {
+    .then((result) => {
       const expected = `
         .foo {
           color: blue;
@@ -80,7 +80,7 @@ test('custom config path can be passed using `config` property in an object', ()
       `,
       { from: undefined }
     )
-    .then(result => {
+    .then((result) => {
       const expected = `
         .foo {
           color: blue;
@@ -117,7 +117,7 @@ test('custom config can be passed under the `config` property', () => {
       `,
       { from: undefined }
     )
-    .then(result => {
+    .then((result) => {
       const expected = `
         .foo {
           color: blue;
@@ -157,7 +157,7 @@ test('tailwind.config.js is picked up by default', () => {
         `,
         { from: undefined }
       )
-      .then(result => {
+      .then((result) => {
         expect(result.css).toMatchCss(`
           .foo {
             color: blue;
@@ -196,7 +196,7 @@ test('tailwind.config.js is picked up by default when passing an empty object', 
         `,
         { from: undefined }
       )
-      .then(result => {
+      .then((result) => {
         expect(result.css).toMatchCss(`
           .foo {
             color: blue;
@@ -218,17 +218,17 @@ test('the default config can be overridden using the presets key', () => {
         {
           theme: {
             extend: {
-              colors: {
-                black: 'black',
+              minHeight: {
+                24: '24px',
               },
-              backgroundColor: theme => theme('colors'),
             },
           },
-          corePlugins: ['backgroundColor'],
+          corePlugins: ['minHeight'],
+          variants: { minHeight: [] },
         },
       ],
       theme: {
-        extend: { colors: { white: 'white' } },
+        extend: { minHeight: { 48: '48px' } },
       },
     }),
   ])
@@ -238,13 +238,114 @@ test('the default config can be overridden using the presets key', () => {
       `,
       { from: undefined }
     )
-    .then(result => {
+    .then((result) => {
       const expected = `
-        .bg-black {
-          background-color: black;
+        .min-h-0 {
+          min-height: 0px;
         }
-        .bg-white {
-          background-color: white;
+        .min-h-24 {
+          min-height: 24px;
+        }
+        .min-h-48 {
+          min-height: 48px;
+        }
+        .min-h-full {
+          min-height: 100%;
+        }
+        .min-h-screen {
+          min-height: 100vh;
+        }
+      `
+
+      expect(result.css).toMatchCss(expected)
+    })
+})
+
+test('presets can be functions', () => {
+  return postcss([
+    tailwind({
+      presets: [
+        () => ({
+          theme: {
+            extend: {
+              minHeight: {
+                24: '24px',
+              },
+            },
+          },
+          corePlugins: ['minHeight'],
+          variants: { minHeight: [] },
+        }),
+      ],
+      theme: {
+        extend: { minHeight: { 48: '48px' } },
+      },
+    }),
+  ])
+    .process(
+      `
+        @tailwind utilities
+      `,
+      { from: undefined }
+    )
+    .then((result) => {
+      const expected = `
+        .min-h-0 {
+          min-height: 0px;
+        }
+        .min-h-24 {
+          min-height: 24px;
+        }
+        .min-h-48 {
+          min-height: 48px;
+        }
+        .min-h-full {
+          min-height: 100%;
+        }
+        .min-h-screen {
+          min-height: 100vh;
+        }
+      `
+
+      expect(result.css).toMatchCss(expected)
+    })
+})
+
+test('the default config can be removed by using an empty presets key in a preset', () => {
+  return postcss([
+    tailwind({
+      presets: [
+        {
+          presets: [],
+          theme: {
+            extend: {
+              minHeight: {
+                24: '24px',
+              },
+            },
+          },
+          corePlugins: ['minHeight'],
+          variants: { minHeight: [] },
+        },
+      ],
+      theme: {
+        extend: { minHeight: { 48: '48px' } },
+      },
+    }),
+  ])
+    .process(
+      `
+        @tailwind utilities
+      `,
+      { from: undefined }
+    )
+    .then((result) => {
+      const expected = `
+        .min-h-24 {
+          min-height: 24px;
+        }
+        .min-h-48 {
+          min-height: 48px;
         }
       `
 
@@ -257,6 +358,7 @@ test('presets can have their own presets', () => {
     tailwind({
       presets: [
         {
+          presets: [],
           theme: {
             colors: { red: '#dd0000' },
           },
@@ -264,6 +366,7 @@ test('presets can have their own presets', () => {
         {
           presets: [
             {
+              presets: [],
               theme: {
                 colors: {
                   transparent: 'transparent',
@@ -278,7 +381,7 @@ test('presets can have their own presets', () => {
                 black: 'black',
                 red: '#ee0000',
               },
-              backgroundColor: theme => theme('colors'),
+              backgroundColor: (theme) => theme('colors'),
             },
           },
           corePlugins: ['backgroundColor'],
@@ -295,7 +398,72 @@ test('presets can have their own presets', () => {
       `,
       { from: undefined }
     )
-    .then(result => {
+    .then((result) => {
+      const expected = `
+        .bg-transparent {
+          background-color: transparent;
+        }
+        .bg-red {
+          background-color: #ee0000;
+        }
+        .bg-black {
+          background-color: black;
+        }
+        .bg-white {
+          background-color: white;
+        }
+      `
+
+      expect(result.css).toMatchCss(expected)
+    })
+})
+
+test('function presets can be mixed with object presets', () => {
+  return postcss([
+    tailwind({
+      presets: [
+        () => ({
+          presets: [],
+          theme: {
+            colors: { red: '#dd0000' },
+          },
+        }),
+        {
+          presets: [
+            () => ({
+              presets: [],
+              theme: {
+                colors: {
+                  transparent: 'transparent',
+                  red: '#ff0000',
+                },
+              },
+            }),
+          ],
+          theme: {
+            extend: {
+              colors: {
+                black: 'black',
+                red: '#ee0000',
+              },
+              backgroundColor: (theme) => theme('colors'),
+            },
+          },
+          corePlugins: ['backgroundColor'],
+        },
+      ],
+      theme: {
+        extend: { colors: { white: 'white' } },
+      },
+    }),
+  ])
+    .process(
+      `
+        @tailwind utilities
+      `,
+      { from: undefined }
+    )
+    .then((result) => {
       const expected = `
         .bg-transparent {
           background-color: transparent;

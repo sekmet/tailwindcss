@@ -3,11 +3,10 @@ import postcss from 'postcss'
 import purgecss from '@fullhuman/postcss-purgecss'
 import log from '../util/log'
 import htmlTags from 'html-tags'
-import { flagEnabled } from '../featureFlags'
 
 function removeTailwindMarkers(css) {
-  css.walkAtRules('tailwind', rule => rule.remove())
-  css.walkComments(comment => {
+  css.walkAtRules('tailwind', (rule) => rule.remove())
+  css.walkComments((comment) => {
     switch (comment.text.trim()) {
       case 'tailwind start base':
       case 'tailwind end base':
@@ -21,6 +20,17 @@ function removeTailwindMarkers(css) {
         break
     }
   })
+}
+
+export function tailwindExtractor(content) {
+  // Capture as liberally as possible, including things like `h-(screen-1.5)`
+  const broadMatches = content.match(/[^<>"'`\s]*[^<>"'`\s:]/g) || []
+  const broadMatchesWithoutTrailingSlash = broadMatches.map((match) => _.trimEnd(match, '\\'))
+
+  // Capture classes within other delimiters like .block(class="w-1/2") in Pug
+  const innerMatches = content.match(/[^<>"'`\s.(){}[\]#=%]*[^<>"'`\s.(){}[\]#=%:]/g) || []
+
+  return broadMatches.concat(broadMatchesWithoutTrailingSlash).concat(innerMatches)
 }
 
 export default function purgeUnusedUtilities(config, configChanged) {
@@ -47,15 +57,13 @@ export default function purgeUnusedUtilities(config, configChanged) {
     return removeTailwindMarkers
   }
 
-  return postcss([
-    function(css) {
-      const mode = _.get(
-        config,
-        'purge.mode',
-        flagEnabled(config, 'purgeLayersByDefault') ? 'layers' : 'conservative'
-      )
+  const { defaultExtractor, ...purgeOptions } = config.purge.options || {}
 
-      if (!['all', 'layers', 'conservative'].includes(mode)) {
+  return postcss([
+    function (css) {
+      const mode = _.get(config, 'purge.mode', 'layers')
+
+      if (!['all', 'layers'].includes(mode)) {
         throw new Error('Purge `mode` must be one of `layers` or `all`.')
       }
 
@@ -63,21 +71,9 @@ export default function purgeUnusedUtilities(config, configChanged) {
         return
       }
 
-      if (mode === 'conservative') {
-        if (configChanged) {
-          log.warn([
-            'The `conservative` purge mode will be removed in Tailwind 2.0.',
-            'Please switch to the new `layers` mode instead.',
-          ])
-        }
-      }
+      const layers = _.get(config, 'purge.layers', ['base', 'components', 'utilities'])
 
-      const layers =
-        mode === 'conservative'
-          ? ['utilities']
-          : _.get(config, 'purge.layers', ['base', 'components', 'utilities'])
-
-      css.walkComments(comment => {
+      css.walkComments((comment) => {
         switch (comment.text.trim()) {
           case `purgecss start ignore`:
             comment.before(postcss.comment({ text: 'purgecss end ignore' }))
@@ -89,7 +85,7 @@ export default function purgeUnusedUtilities(config, configChanged) {
           default:
             break
         }
-        layers.forEach(layer => {
+        layers.forEach((layer) => {
           switch (comment.text.trim()) {
             case `tailwind start ${layer}`:
               comment.text = 'purgecss end ignore'
@@ -109,23 +105,17 @@ export default function purgeUnusedUtilities(config, configChanged) {
     removeTailwindMarkers,
     purgecss({
       content: Array.isArray(config.purge) ? config.purge : config.purge.content,
-      defaultExtractor: content => {
-        // Capture as liberally as possible, including things like `h-(screen-1.5)`
-        const broadMatches = content.match(/[^<>"'`\s]*[^<>"'`\s:]/g) || []
-        const broadMatchesWithoutTrailingSlash = broadMatches.map(match => _.trimEnd(match, '\\'))
-
-        // Capture classes within other delimiters like .block(class="w-1/2") in Pug
-        const innerMatches = content.match(/[^<>"'`\s.(){}[\]#=%]*[^<>"'`\s.(){}[\]#=%:]/g) || []
-
-        const matches = broadMatches.concat(broadMatchesWithoutTrailingSlash).concat(innerMatches)
+      defaultExtractor: (content) => {
+        const extractor = defaultExtractor || tailwindExtractor
+        const preserved = [...extractor(content)]
 
         if (_.get(config, 'purge.preserveHtmlElements', true)) {
-          return [...htmlTags].concat(matches)
-        } else {
-          return matches
+          preserved.push(...htmlTags)
         }
+
+        return preserved
       },
-      ...config.purge.options,
+      ...purgeOptions,
     }),
   ])
 }
